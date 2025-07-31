@@ -427,8 +427,10 @@ flowchart TD
 解决方案：将括号改为尖括号，例如
 - 错误案例
 C -- 否 --> E[直接执行 bmad.js (非 npx 场景, 可能仅是代理)];
+E --> F{Agent与用户互动以细化内容<br/>(tasks/advanced-elicitation.md)};
 - 正确案例
 C -- 否 --> E[直接执行 bmad.js <非 npx 场景, 可能仅是代理>];
+E --> F{Agent与用户互动以细化内容<br/><tasks/advanced-elicitation.md>};
 
 ## 在线工具
 
