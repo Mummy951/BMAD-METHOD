@@ -1,3 +1,12 @@
+/**
+ * IDE设置 - 负责处理不同IDE的安装和配置
+ *
+ * 此模块扩展了BaseIdeSetup，为各种IDE（如Cursor, Claude Code, Windsurf, Trae, Roo, Cline, Gemini, Github Copilot）
+ * 提供专门的设置逻辑。它根据传入的IDE类型调用相应的设置函数，
+ * 处理代理规则的生成、文件写入以及IDE特定的配置调整，
+ * 确保BMad代理能够正确集成并按预期运行。
+ */
+
 const path = require("path");
 const fs = require("fs-extra");
 const yaml = require("js-yaml");
@@ -24,7 +33,7 @@ class IdeSetup extends BaseIdeSetup {
       this.ideAgentConfig = yaml.load(configContent);
       return this.ideAgentConfig;
     } catch (error) {
-      console.warn('Failed to load IDE agent configuration, using defaults');
+      console.warn('加载IDE代理配置失败，使用默认配置');
       return {
         'roo-permissions': {},
         'cline-order': {}
@@ -36,7 +45,7 @@ class IdeSetup extends BaseIdeSetup {
     const ideConfig = await configLoader.getIdeConfiguration(ide);
 
     if (!ideConfig) {
-      console.log(chalk.yellow(`\nNo configuration available for ${ide}`));
+      console.log(chalk.yellow(`\n${ide}没有可用的配置`));
       return false;
     }
 
@@ -58,7 +67,7 @@ class IdeSetup extends BaseIdeSetup {
       case "github-copilot":
         return this.setupGitHubCopilot(installDir, selectedAgent, spinner, preConfiguredSettings);
       default:
-        console.log(chalk.yellow(`\nIDE ${ide} not yet supported`));
+        console.log(chalk.yellow(`\n尚不支持IDE ${ide}`));
         return false;
     }
   }
@@ -76,22 +85,22 @@ class IdeSetup extends BaseIdeSetup {
         const mdcContent = await this.createAgentRuleContent(agentId, agentPath, installDir, 'mdc');
         const mdcPath = path.join(cursorRulesDir, `${agentId}.mdc`);
         await fileManager.writeFile(mdcPath, mdcContent);
-        console.log(chalk.green(`✓ Created rule: ${agentId}.mdc`));
+        console.log(chalk.green(`✓ 已创建规则: ${agentId}.mdc`));
       }
     }
 
-    console.log(chalk.green(`\n✓ Created Cursor rules in ${cursorRulesDir}`));
+    console.log(chalk.green(`\n✓ 已在 ${cursorRulesDir} 中创建Cursor规则`));
     return true;
   }
 
   async setupClaudeCode(installDir, selectedAgent) {
-    // Setup bmad-core commands
+    // 设置bmad-core命令
     const coreSlashPrefix = await this.getCoreSlashPrefix(installDir);
     const coreAgents = selectedAgent ? [selectedAgent] : await this.getCoreAgentIds(installDir);
     const coreTasks = await this.getCoreTaskIds(installDir);
     await this.setupClaudeCodeForPackage(installDir, "core", coreSlashPrefix, coreAgents, coreTasks, ".bmad-core");
 
-    // Setup expansion pack commands
+    // 设置扩展包命令
     const expansionPacks = await this.getInstalledExpansionPacks(installDir);
     for (const packInfo of expansionPacks) {
       const packSlashPrefix = await this.getExpansionPackSlashPrefix(packInfo.path);
@@ -99,7 +108,7 @@ class IdeSetup extends BaseIdeSetup {
       const packTasks = await this.getExpansionPackTasks(packInfo.path);
       
       if (packAgents.length > 0 || packTasks.length > 0) {
-        // Use the actual directory name where the expansion pack is installed
+        // 使用扩展包安装的实际目录名
         const rootPath = path.relative(installDir, packInfo.path);
         await this.setupClaudeCodeForPackage(installDir, packInfo.name, packSlashPrefix, packAgents, packTasks, rootPath);
       }
@@ -113,87 +122,87 @@ class IdeSetup extends BaseIdeSetup {
     const agentsDir = path.join(commandsBaseDir, "agents");
     const tasksDir = path.join(commandsBaseDir, "tasks");
 
-    // Ensure directories exist
+    // 确保目录存在
     await fileManager.ensureDirectory(agentsDir);
     await fileManager.ensureDirectory(tasksDir);
 
-    // Setup agents
+    // 设置代理
     for (const agentId of agentIds) {
-      // Find the agent file - for expansion packs, prefer the expansion pack version
+      // 查找代理文件 - 对于扩展包，优先使用扩展包版本
       let agentPath;
       if (packageName !== "core") {
-        // For expansion packs, first try to find the agent in the expansion pack directory
+        // 对于扩展包，首先尝试在扩展包目录中查找代理
         const expansionPackPath = path.join(installDir, rootPath, "agents", `${agentId}.md`);
         if (await fileManager.pathExists(expansionPackPath)) {
           agentPath = expansionPackPath;
         } else {
-          // Fall back to core if not found in expansion pack
+          // 如果在扩展包中找不到，则回退到核心
           agentPath = await this.findAgentPath(agentId, installDir);
         }
       } else {
-        // For core, use the normal search
+        // 对于核心，使用正常搜索
         agentPath = await this.findAgentPath(agentId, installDir);
       }
       
       const commandPath = path.join(agentsDir, `${agentId}.md`);
 
       if (agentPath) {
-        // Create command file with agent content
+        // 创建带有代理内容的命令文件
         let agentContent = await fileManager.readFile(agentPath);
         
-        // Replace {root} placeholder with the appropriate root path for this context
+        // 将{root}占位符替换为当前上下文的适当根路径
         agentContent = agentContent.replace(/{root}/g, rootPath);
 
-        // Add command header
-        let commandContent = `# /${agentId} Command\n\n`;
-        commandContent += `When this command is used, adopt the following agent persona:\n\n`;
+        // 添加命令头
+        let commandContent = `# /${agentId} 命令\n\n`;
+        commandContent += `使用此命令时，采用以下代理角色:\n\n`;
         commandContent += agentContent;
 
         await fileManager.writeFile(commandPath, commandContent);
-        console.log(chalk.green(`✓ Created agent command: /${agentId}`));
+        console.log(chalk.green(`✓ 已创建代理命令: /${agentId}`));
       }
     }
 
-    // Setup tasks
+    // 设置任务
     for (const taskId of taskIds) {
-      // Find the task file - for expansion packs, prefer the expansion pack version
+      // 查找任务文件 - 对于扩展包，优先使用扩展包版本
       let taskPath;
       if (packageName !== "core") {
-        // For expansion packs, first try to find the task in the expansion pack directory
+        // 对于扩展包，首先尝试在扩展包目录中查找任务
         const expansionPackPath = path.join(installDir, rootPath, "tasks", `${taskId}.md`);
         if (await fileManager.pathExists(expansionPackPath)) {
           taskPath = expansionPackPath;
         } else {
-          // Fall back to core if not found in expansion pack
+          // 如果在扩展包中找不到，则回退到核心
           taskPath = await this.findTaskPath(taskId, installDir);
         }
       } else {
-        // For core, use the normal search
+        // 对于核心，使用正常搜索
         taskPath = await this.findTaskPath(taskId, installDir);
       }
       
       const commandPath = path.join(tasksDir, `${taskId}.md`);
 
       if (taskPath) {
-        // Create command file with task content
+        // 创建带有任务内容的命令文件
         let taskContent = await fileManager.readFile(taskPath);
         
-        // Replace {root} placeholder with the appropriate root path for this context
+        // 将{root}占位符替换为当前上下文的适当根路径
         taskContent = taskContent.replace(/{root}/g, rootPath);
 
-        // Add command header
-        let commandContent = `# /${taskId} Task\n\n`;
-        commandContent += `When this command is used, execute the following task:\n\n`;
+        // 添加命令头
+        let commandContent = `# /${taskId} 任务\n\n`;
+        commandContent += `使用此命令时，执行以下任务:\n\n`;
         commandContent += taskContent;
 
         await fileManager.writeFile(commandPath, commandContent);
-        console.log(chalk.green(`✓ Created task command: /${taskId}`));
+        console.log(chalk.green(`✓ 已创建任务命令: /${taskId}`));
       }
     }
 
-    console.log(chalk.green(`\n✓ Created Claude Code commands for ${packageName} in ${commandsBaseDir}`));
-    console.log(chalk.dim(`  - Agents in: ${agentsDir}`));
-    console.log(chalk.dim(`  - Tasks in: ${tasksDir}`));
+    console.log(chalk.green(`\n✓ 已为 ${packageName} 在 ${commandsBaseDir} 中创建Claude Code命令`));
+    console.log(chalk.dim(`  - 代理目录: ${agentsDir}`));
+    console.log(chalk.dim(`  - 任务目录: ${tasksDir}`));
   }
 
   async setupWindsurf(installDir, selectedAgent) {
@@ -203,47 +212,47 @@ class IdeSetup extends BaseIdeSetup {
     await fileManager.ensureDirectory(windsurfRulesDir);
 
     for (const agentId of agents) {
-      // Find the agent file
+      // 查找代理文件
       const agentPath = await this.findAgentPath(agentId, installDir);
 
       if (agentPath) {
         const agentContent = await fileManager.readFile(agentPath);
         const mdPath = path.join(windsurfRulesDir, `${agentId}.md`);
 
-        // Create MD content (similar to Cursor but without frontmatter)
-        let mdContent = `# ${agentId.toUpperCase()} Agent Rule\n\n`;
-        mdContent += `This rule is triggered when the user types \`@${agentId}\` and activates the ${await this.getAgentTitle(
+        // 创建MD内容（类似于Cursor，但没有前置元数据）
+        let mdContent = `# ${agentId.toUpperCase()} 代理规则\n\n`;
+        mdContent += `当用户输入 \`@${agentId}\` 并激活 ${await this.getAgentTitle(
           agentId,
           installDir
-        )} agent persona.\n\n`;
-        mdContent += "## Agent Activation\n\n";
+        )} 代理角色时，此规则将被触发。\n\n`;
+        mdContent += "## 代理激活\n\n";
         mdContent +=
-          "CRITICAL: Read the full YAML, start activation to alter your state of being, follow startup section instructions, stay in this being until told to exit this mode:\n\n";
+          "重要提示: 阅读完整的YAML，开始激活以改变您的存在状态，遵循启动部分说明，在此状态下直到被告知退出此模式:\n\n";
         mdContent += "```yaml\n";
-        // Extract just the YAML content from the agent file
+        // 从代理文件中提取YAML内容
         const yamlContent = extractYamlFromAgent(agentContent);
         if (yamlContent) {
           mdContent += yamlContent;
         } else {
-          // If no YAML found, include the whole content minus the header
+          // 如果未找到YAML，则包含除头信息外的所有内容
           mdContent += agentContent.replace(/^#.*$/m, "").trim();
         }
         mdContent += "\n```\n\n";
-        mdContent += "## File Reference\n\n";
+        mdContent += "## 文件引用\n\n";
         const relativePath = path.relative(installDir, agentPath).replace(/\\/g, '/');
-        mdContent += `The complete agent definition is available in [${relativePath}](${relativePath}).\n\n`;
-        mdContent += "## Usage\n\n";
-        mdContent += `When the user types \`@${agentId}\`, activate this ${await this.getAgentTitle(
+        mdContent += `完整的代理定义可在 [${relativePath}](${relativePath}) 中找到。\n\n`;
+        mdContent += "## 用法\n\n";
+        mdContent += `当用户输入 \`@${agentId}\` 时，激活此 ${await this.getAgentTitle(
           agentId,
           installDir
-        )} persona and follow all instructions defined in the YAML configuration above.\n`;
+        )} 角色并遵循上述YAML配置中定义的所有说明。\n`;
 
         await fileManager.writeFile(mdPath, mdContent);
-        console.log(chalk.green(`✓ Created rule: ${agentId}.md`));
+        console.log(chalk.green(`✓ 已创建规则: ${agentId}.md`));
       }
     }
 
-    console.log(chalk.green(`\n✓ Created Windsurf rules in ${windsurfRulesDir}`));
+    console.log(chalk.green(`\n✓ 已在 ${windsurfRulesDir} 中创建Windsurf规则`));
 
     return true;
   }
@@ -255,56 +264,56 @@ class IdeSetup extends BaseIdeSetup {
     await fileManager.ensureDirectory(traeRulesDir);
     
     for (const agentId of agents) {
-      // Find the agent file
+      // 查找代理文件
       const agentPath = await this.findAgentPath(agentId, installDir);
       
       if (agentPath) {
         const agentContent = await fileManager.readFile(agentPath);
         const mdPath = path.join(traeRulesDir, `${agentId}.md`);
         
-        // Create MD content (similar to Cursor but without frontmatter)
-        let mdContent = `# ${agentId.toUpperCase()} Agent Rule\n\n`;
-        mdContent += `This rule is triggered when the user types \`@${agentId}\` and activates the ${await this.getAgentTitle(
+        // 创建MD内容（类似于Cursor，但没有前置元数据）
+        let mdContent = `# ${agentId.toUpperCase()} 代理规则\n\n`;
+        mdContent += `当用户输入 \`@${agentId}\` 并激活 ${await this.getAgentTitle(
           agentId,
           installDir
-        )} agent persona.\n\n`;
-        mdContent += "## Agent Activation\n\n";
+        )} 代理角色时，此规则将被触发。\n\n`;
+        mdContent += "## 代理激活\n\n";
         mdContent +=
-          "CRITICAL: Read the full YAML, start activation to alter your state of being, follow startup section instructions, stay in this being until told to exit this mode:\n\n";
+          "重要提示: 阅读完整的YAML，开始激活以改变您的存在状态，遵循启动部分说明，在此状态下直到被告知退出此模式:\n\n";
         mdContent += "```yaml\n";
-        // Extract just the YAML content from the agent file
+        // 从代理文件中提取YAML内容
         const yamlContent = extractYamlFromAgent(agentContent);
         if (yamlContent) {
           mdContent += yamlContent;
         }
         else {
-          // If no YAML found, include the whole content minus the header
+          // 如果未找到YAML，则包含除头信息外的所有内容
           mdContent += agentContent.replace(/^#.*$/m, "").trim();
         }
         mdContent += "\n```\n\n";
-        mdContent += "## File Reference\n\n";
+        mdContent += "## 文件引用\n\n";
         const relativePath = path.relative(installDir, agentPath).replace(/\\/g, '/');
-        mdContent += `The complete agent definition is available in [${relativePath}](${relativePath}).\n\n`;
-        mdContent += "## Usage\n\n";
-        mdContent += `When the user types \`@${agentId}\`, activate this ${await this.getAgentTitle(
+        mdContent += `完整的代理定义可在 [${relativePath}](${relativePath}) 中找到。\n\n`;
+        mdContent += "## 用法\n\n";
+        mdContent += `当用户输入 \`@${agentId}\` 时，激活此 ${await this.getAgentTitle(
           agentId,
           installDir
-        )} persona and follow all instructions defined in the YAML configuration above.\n`;
+        )} 角色并遵循上述YAML配置中定义的所有说明。\n`;
         
         await fileManager.writeFile(mdPath, mdContent);
-        console.log(chalk.green(`✓ Created rule: ${agentId}.md`));
+        console.log(chalk.green(`✓ 已创建规则: ${agentId}.md`));
       }
     }
   }
 
   async findAgentPath(agentId, installDir) {
-    // Try to find the agent file in various locations
+    // 尝试在各种位置查找代理文件
     const possiblePaths = [
       path.join(installDir, ".bmad-core", "agents", `${agentId}.md`),
       path.join(installDir, "agents", `${agentId}.md`)
     ];
     
-    // Also check expansion pack directories
+    // 也检查扩展包目录
     const glob = require("glob");
     const expansionDirs = glob.sync(".*/agents", { cwd: installDir });
     for (const expDir of expansionDirs) {
@@ -324,7 +333,7 @@ class IdeSetup extends BaseIdeSetup {
     const glob = require("glob");
     const allAgentIds = [];
     
-    // Check core agents in .bmad-core or root
+    // 检查.bmad-core或根目录中的核心代理
     let agentsDir = path.join(installDir, ".bmad-core", "agents");
     if (!(await fileManager.pathExists(agentsDir))) {
       agentsDir = path.join(installDir, "agents");
@@ -335,7 +344,7 @@ class IdeSetup extends BaseIdeSetup {
       allAgentIds.push(...agentFiles.map((file) => path.basename(file, ".md")));
     }
     
-    // Also check for expansion pack agents in dot folders
+    // 也检查带点文件夹中的扩展包代理
     const expansionDirs = glob.sync(".*/agents", { cwd: installDir });
     for (const expDir of expansionDirs) {
       const fullExpDir = path.join(installDir, expDir);
@@ -343,14 +352,14 @@ class IdeSetup extends BaseIdeSetup {
       allAgentIds.push(...expAgentFiles.map((file) => path.basename(file, ".md")));
     }
     
-    // Remove duplicates
+    // 移除重复项
     return [...new Set(allAgentIds)];
   }
 
   async getCoreAgentIds(installDir) {
     const allAgentIds = [];
     
-    // Check core agents in .bmad-core or root only
+    // 仅检查.bmad-core或根目录中的核心代理
     let agentsDir = path.join(installDir, ".bmad-core", "agents");
     if (!(await fileManager.pathExists(agentsDir))) {
       agentsDir = path.join(installDir, "bmad-core", "agents");
@@ -368,7 +377,7 @@ class IdeSetup extends BaseIdeSetup {
   async getCoreTaskIds(installDir) {
     const allTaskIds = [];
     
-    // Check core tasks in .bmad-core or root only
+    // 仅检查.bmad-core或根目录中的核心任务
     let tasksDir = path.join(installDir, ".bmad-core", "tasks");
     if (!(await fileManager.pathExists(tasksDir))) {
       tasksDir = path.join(installDir, "bmad-core", "tasks");
@@ -380,7 +389,7 @@ class IdeSetup extends BaseIdeSetup {
       allTaskIds.push(...taskFiles.map((file) => path.basename(file, ".md")));
     }
     
-    // Check common tasks
+    // 检查通用任务
     const commonTasksDir = path.join(installDir, "common", "tasks");
     if (await fileManager.pathExists(commonTasksDir)) {
       const commonTaskFiles = glob.sync("*.md", { cwd: commonTasksDir });
@@ -391,13 +400,13 @@ class IdeSetup extends BaseIdeSetup {
   }
 
   async getAgentTitle(agentId, installDir) {
-    // Try to find the agent file in various locations
+    // 尝试在各种位置查找代理文件
     const possiblePaths = [
       path.join(installDir, ".bmad-core", "agents", `${agentId}.md`),
       path.join(installDir, "agents", `${agentId}.md`)
     ];
     
-    // Also check expansion pack directories
+    // 也检查扩展包目录
     const glob = require("glob");
     const expansionDirs = glob.sync(".*/agents", { cwd: installDir });
     for (const expDir of expansionDirs) {
@@ -418,12 +427,12 @@ class IdeSetup extends BaseIdeSetup {
             }
           }
         } catch (error) {
-          console.warn(`Failed to read agent title for ${agentId}: ${error.message}`);
+          console.warn(`读取代理 ${agentId} 的标题失败: ${error.message}`);
         }
       }
     }
     
-    // Fallback to formatted agent ID
+    // 回退到格式化后的代理ID
     return agentId.split('-').map(word => 
       word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
@@ -433,7 +442,7 @@ class IdeSetup extends BaseIdeSetup {
     const glob = require("glob");
     const allTaskIds = [];
     
-    // Check core tasks in .bmad-core or root
+    // 检查.bmad-core或根目录中的核心任务
     let tasksDir = path.join(installDir, ".bmad-core", "tasks");
     if (!(await fileManager.pathExists(tasksDir))) {
       tasksDir = path.join(installDir, "bmad-core", "tasks");
@@ -444,14 +453,14 @@ class IdeSetup extends BaseIdeSetup {
       allTaskIds.push(...taskFiles.map((file) => path.basename(file, ".md")));
     }
     
-    // Check common tasks
+    // 检查通用任务
     const commonTasksDir = path.join(installDir, "common", "tasks");
     if (await fileManager.pathExists(commonTasksDir)) {
       const commonTaskFiles = glob.sync("*.md", { cwd: commonTasksDir });
       allTaskIds.push(...commonTaskFiles.map((file) => path.basename(file, ".md")));
     }
     
-    // Also check for expansion pack tasks in dot folders
+    // 也检查带点文件夹中的扩展包任务
     const expansionDirs = glob.sync(".*/tasks", { cwd: installDir });
     for (const expDir of expansionDirs) {
       const fullExpDir = path.join(installDir, expDir);
@@ -459,7 +468,7 @@ class IdeSetup extends BaseIdeSetup {
       allTaskIds.push(...expTaskFiles.map((file) => path.basename(file, ".md")));
     }
     
-    // Check expansion-packs folder tasks
+    // 检查expansion-packs文件夹中的任务
     const expansionPacksDir = path.join(installDir, "expansion-packs");
     if (await fileManager.pathExists(expansionPacksDir)) {
       const expPackDirs = glob.sync("*/tasks", { cwd: expansionPacksDir });
@@ -470,28 +479,28 @@ class IdeSetup extends BaseIdeSetup {
       }
     }
     
-    // Remove duplicates
+    // 移除重复项
     return [...new Set(allTaskIds)];
   }
 
   async findTaskPath(taskId, installDir) {
-    // Try to find the task file in various locations
+    // 尝试在各种位置查找任务文件
     const possiblePaths = [
       path.join(installDir, ".bmad-core", "tasks", `${taskId}.md`),
       path.join(installDir, "bmad-core", "tasks", `${taskId}.md`),
       path.join(installDir, "common", "tasks", `${taskId}.md`)
     ];
     
-    // Also check expansion pack directories
+    // 也检查扩展包目录
     const glob = require("glob");
     
-    // Check dot folder expansion packs
+    // 检查带点文件夹中的扩展包
     const expansionDirs = glob.sync(".*/tasks", { cwd: installDir });
     for (const expDir of expansionDirs) {
       possiblePaths.push(path.join(installDir, expDir, `${taskId}.md`));
     }
     
-    // Check expansion-packs folder
+    // 检查expansion-packs文件夹
     const expansionPacksDir = path.join(installDir, "expansion-packs");
     if (await fileManager.pathExists(expansionPacksDir)) {
       const expPackDirs = glob.sync("*/tasks", { cwd: expansionPacksDir });
@@ -513,21 +522,21 @@ class IdeSetup extends BaseIdeSetup {
     try {
       const coreConfigPath = path.join(installDir, ".bmad-core", "core-config.yaml");
       if (!(await fileManager.pathExists(coreConfigPath))) {
-        // Try bmad-core directory
+        // 尝试bmad-core目录
         const altConfigPath = path.join(installDir, "bmad-core", "core-config.yaml");
         if (await fileManager.pathExists(altConfigPath)) {
           const configContent = await fileManager.readFile(altConfigPath);
           const config = yaml.load(configContent);
           return config.slashPrefix || "BMad";
         }
-        return "BMad"; // fallback
+        return "BMad"; // 回退
       }
       
       const configContent = await fileManager.readFile(coreConfigPath);
       const config = yaml.load(configContent);
       return config.slashPrefix || "BMad";
     } catch (error) {
-      console.warn(`Failed to read core slashPrefix, using default 'BMad': ${error.message}`);
+      console.warn(`读取核心斜杠前缀失败，使用默认值 'BMad': ${error.message}`);
       return "BMad";
     }
   }
@@ -535,14 +544,14 @@ class IdeSetup extends BaseIdeSetup {
   async getInstalledExpansionPacks(installDir) {
     const expansionPacks = [];
     
-    // Check for dot-prefixed expansion packs in install directory
+    // 检查安装目录中带点前缀的扩展包
     const glob = require("glob");
     const dotExpansions = glob.sync(".bmad-*", { cwd: installDir });
     
     for (const dotExpansion of dotExpansions) {
       if (dotExpansion !== ".bmad-core") {
         const packPath = path.join(installDir, dotExpansion);
-        const packName = dotExpansion.substring(1); // remove the dot
+        const packName = dotExpansion.substring(1); // 移除点
         expansionPacks.push({
           name: packName,
           path: packPath
@@ -550,7 +559,7 @@ class IdeSetup extends BaseIdeSetup {
       }
     }
     
-    // Check for expansion-packs directory style
+    // 检查expansion-packs目录样式
     const expansionPacksDir = path.join(installDir, "expansion-packs");
     if (await fileManager.pathExists(expansionPacksDir)) {
       const packDirs = glob.sync("*", { cwd: expansionPacksDir });
@@ -579,10 +588,10 @@ class IdeSetup extends BaseIdeSetup {
         return config.slashPrefix || path.basename(packPath);
       }
     } catch (error) {
-      console.warn(`Failed to read expansion pack slashPrefix from ${packPath}: ${error.message}`);
+      console.warn(`从 ${packPath} 读取扩展包斜杠前缀失败: ${error.message}`);
     }
     
-    return path.basename(packPath); // fallback to directory name
+    return path.basename(packPath); // 回退到目录名
   }
 
   async getExpansionPackAgents(packPath) {
@@ -596,7 +605,7 @@ class IdeSetup extends BaseIdeSetup {
       const agentFiles = glob.sync("*.md", { cwd: agentsDir });
       return agentFiles.map(file => path.basename(file, ".md"));
     } catch (error) {
-      console.warn(`Failed to read expansion pack agents from ${packPath}: ${error.message}`);
+      console.warn(`从 ${packPath} 读取扩展包代理失败: ${error.message}`);
       return [];
     }
   }
@@ -612,7 +621,7 @@ class IdeSetup extends BaseIdeSetup {
       const taskFiles = glob.sync("*.md", { cwd: tasksDir });
       return taskFiles.map(file => path.basename(file, ".md"));
     } catch (error) {
-      console.warn(`Failed to read expansion pack tasks from ${packPath}: ${error.message}`);
+      console.warn(`从 ${packPath} 读取扩展包任务失败: ${error.message}`);
       return [];
     }
   }
@@ -620,49 +629,49 @@ class IdeSetup extends BaseIdeSetup {
   async setupRoo(installDir, selectedAgent) {
     const agents = selectedAgent ? [selectedAgent] : await this.getAllAgentIds(installDir);
 
-    // Check for existing .roomodes file in project root
+    // 检查项目根目录中是否存在.roomodes文件
     const roomodesPath = path.join(installDir, ".roomodes");
     let existingModes = [];
     let existingContent = "";
 
     if (await fileManager.pathExists(roomodesPath)) {
       existingContent = await fileManager.readFile(roomodesPath);
-      // Parse existing modes to avoid duplicates
+      // 解析现有模式以避免重复
       const modeMatches = existingContent.matchAll(/- slug: ([\w-]+)/g);
       for (const match of modeMatches) {
         existingModes.push(match[1]);
       }
-      console.log(chalk.yellow(`Found existing .roomodes file with ${existingModes.length} modes`));
+      console.log(chalk.yellow(`找到现有.roomodes文件，包含 ${existingModes.length} 种模式`));
     }
 
-    // Create new modes content
+    // 创建新模式内容
     let newModesContent = "";
 
-    // Load dynamic agent permissions from configuration
+    // 从配置中加载动态代理权限
     const config = await this.loadIdeAgentConfig();
     const agentPermissions = config['roo-permissions'] || {};
 
     for (const agentId of agents) {
-      // Skip if already exists
-      // Check both with and without bmad- prefix to handle both cases
+      // 如果已存在则跳过
+      // 检查带“bmad-”前缀和不带前缀的两种情况
       const checkSlug = agentId.startsWith('bmad-') ? agentId : `bmad-${agentId}`;
       if (existingModes.includes(checkSlug)) {
-        console.log(chalk.dim(`Skipping ${agentId} - already exists in .roomodes`));
+        console.log(chalk.dim(`跳过 ${agentId} - 已存在于.roomodes中`));
         continue;
       }
 
-      // Read agent file to extract all information
+      // 读取代理文件以提取所有信息
       const agentPath = await this.findAgentPath(agentId, installDir);
 
       if (agentPath) {
         const agentContent = await fileManager.readFile(agentPath);
 
-        // Extract YAML content
+        // 提取YAML内容
         const yamlMatch = agentContent.match(/```ya?ml\r?\n([\s\S]*?)```/);
         if (yamlMatch) {
           const yaml = yamlMatch[1];
 
-          // Extract agent info from YAML
+          // 从YAML中提取代理信息
           const titleMatch = yaml.match(/title:\s*(.+)/);
           const iconMatch = yaml.match(/icon:\s*(.+)/);
           const whenToUseMatch = yaml.match(/whenToUse:\s*"(.+)"/);
@@ -670,25 +679,25 @@ class IdeSetup extends BaseIdeSetup {
 
           const title = titleMatch ? titleMatch[1].trim() : await this.getAgentTitle(agentId, installDir);
           const icon = iconMatch ? iconMatch[1].trim() : "🤖";
-          const whenToUse = whenToUseMatch ? whenToUseMatch[1].trim() : `Use for ${title} tasks`;
+          const whenToUse = whenToUseMatch ? whenToUseMatch[1].trim() : `用于${title}任务`;
           const roleDefinition = roleDefinitionMatch
             ? roleDefinitionMatch[1].trim()
-            : `You are a ${title} specializing in ${title.toLowerCase()} tasks and responsibilities.`;
+            : `您是专注于${title.toLowerCase()}任务和职责的${title}专家。`;
 
-          // Build mode entry with proper formatting (matching exact indentation)
-          // Avoid double "bmad-" prefix for agents that already have it
+          // 构建模式条目并进行适当的格式化（匹配精确的缩进）
+          // 避免对于已经有“bmad-”前缀的代理再次添加前缀
           const slug = agentId.startsWith('bmad-') ? agentId : `bmad-${agentId}`;
           newModesContent += ` - slug: ${slug}\n`;
           newModesContent += `   name: '${icon} ${title}'\n`;
           newModesContent += `   roleDefinition: ${roleDefinition}\n`;
           newModesContent += `   whenToUse: ${whenToUse}\n`;
-          // Get relative path from installDir to agent file
+          // 获取从installDir到代理文件的相对路径
           const relativePath = path.relative(installDir, agentPath).replace(/\\/g, '/');
-          newModesContent += `   customInstructions: CRITICAL Read the full YAML from ${relativePath} start activation to alter your state of being follow startup section instructions stay in this being until told to exit this mode\n`;
+          newModesContent += `   customInstructions: 重要提示 阅读 ${relativePath} 中的完整YAML，开始激活以改变您的存在状态，遵循启动部分说明，在此状态下直到被告知退出此模式\n`;
           newModesContent += `   groups:\n`;
           newModesContent += `    - read\n`;
 
-          // Add permissions based on agent type
+          // 根据代理类型添加权限
           const permissions = agentPermissions[agentId];
           if (permissions) {
             newModesContent += `    - - edit\n`;
@@ -698,27 +707,27 @@ class IdeSetup extends BaseIdeSetup {
             newModesContent += `    - edit\n`;
           }
 
-          console.log(chalk.green(`✓ Added mode: bmad-${agentId} (${icon} ${title})`));
+          console.log(chalk.green(`✓ 已添加模式: bmad-${agentId} (${icon} ${title})`));
         }
       }
     }
 
-    // Build final roomodes content
+    // 构建最终的roomodes内容
     let roomodesContent = "";
     if (existingContent) {
-      // If there's existing content, append new modes to it
+      // 如果存在现有内容，则将新模式追加到其后
       roomodesContent = existingContent.trim() + "\n" + newModesContent;
     } else {
-      // Create new .roomodes file with proper YAML structure
+      // 创建具有正确YAML结构的新.roomodes文件
       roomodesContent = "customModes:\n" + newModesContent;
     }
 
-    // Write .roomodes file
+    // 写入.roomodes文件
     await fileManager.writeFile(roomodesPath, roomodesContent);
-    console.log(chalk.green("✓ Created .roomodes file in project root"));
+    console.log(chalk.green("✓ 已在项目根目录中创建.roomodes文件"));
 
-    console.log(chalk.green(`\n✓ Roo Code setup complete!`));
-    console.log(chalk.dim("Custom modes will be available when you open this project in Roo Code"));
+    console.log(chalk.green(`\n✓ Roo Code设置完成!`));
+    console.log(chalk.dim("当您在Roo Code中打开此项目时，自定义模式将可用"));
 
     return true;
   }
@@ -729,53 +738,53 @@ class IdeSetup extends BaseIdeSetup {
 
     await fileManager.ensureDirectory(clineRulesDir);
 
-    // Load dynamic agent ordering from configuration
+    // 从配置中加载动态代理排序
     const config = await this.loadIdeAgentConfig();
     const agentOrder = config['cline-order'] || {};
 
     for (const agentId of agents) {
-      // Find the agent file
+      // 查找代理文件
       const agentPath = await this.findAgentPath(agentId, installDir);
 
       if (agentPath) {
         const agentContent = await fileManager.readFile(agentPath);
 
-        // Get numeric prefix for ordering
+        // 获取用于排序的数字前缀
         const order = agentOrder[agentId] || 99;
         const prefix = order.toString().padStart(2, '0');
         const mdPath = path.join(clineRulesDir, `${prefix}-${agentId}.md`);
 
-        // Create MD content for Cline (focused on project standards and role)
-        let mdContent = `# ${await this.getAgentTitle(agentId, installDir)} Agent\n\n`;
-        mdContent += `This rule defines the ${await this.getAgentTitle(agentId, installDir)} persona and project standards.\n\n`;
-        mdContent += "## Role Definition\n\n";
+        // 为Cline创建MD内容（侧重于项目标准和角色）
+        let mdContent = `# ${await this.getAgentTitle(agentId, installDir)} 代理\n\n`;
+        mdContent += `此规则定义了 ${await this.getAgentTitle(agentId, installDir)} 角色和项目标准。\n\n`;
+        mdContent += "## 角色定义\n\n";
         mdContent +=
-          "When the user types `@" + agentId + "`, adopt this persona and follow these guidelines:\n\n";
+          "当用户输入 `@" + agentId + "` 时，采用此角色并遵循以下指南:\n\n";
         mdContent += "```yaml\n";
-        // Extract just the YAML content from the agent file
+        // 从代理文件中提取YAML内容
         const yamlContent = extractYamlFromAgent(agentContent);
         if (yamlContent) {
           mdContent += yamlContent;
         } else {
-          // If no YAML found, include the whole content minus the header
+          // 如果未找到YAML，则包含除头信息外的所有内容
           mdContent += agentContent.replace(/^#.*$/m, "").trim();
         }
         mdContent += "\n```\n\n";
-        mdContent += "## Project Standards\n\n";
-        mdContent += `- Always maintain consistency with project documentation in .bmad-core/\n`;
-        mdContent += `- Follow the agent's specific guidelines and constraints\n`;
-        mdContent += `- Update relevant project files when making changes\n`;
+        mdContent += "## 项目标准\n\n";
+        mdContent += `- 始终与.bmad-core/中的项目文档保持一致\n`;
+        mdContent += `- 遵循代理的特定指南和约束\n`;
+        mdContent += `- 更改时更新相关的项目文件\n`;
         const relativePath = path.relative(installDir, agentPath).replace(/\\/g, '/');
-        mdContent += `- Reference the complete agent definition in [${relativePath}](${relativePath})\n\n`;
-        mdContent += "## Usage\n\n";
-        mdContent += `Type \`@${agentId}\` to activate this ${await this.getAgentTitle(agentId, installDir)} persona.\n`;
+        mdContent += `- 参考 [${relativePath}](${relativePath}) 中的完整代理定义\n\n`;
+        mdContent += "## 用法\n\n";
+        mdContent += `输入 \`@${agentId}\` 以激活此 ${await this.getAgentTitle(agentId, installDir)} 角色。\n`;
 
         await fileManager.writeFile(mdPath, mdContent);
-        console.log(chalk.green(`✓ Created rule: ${prefix}-${agentId}.md`));
+        console.log(chalk.green(`✓ 已创建规则: ${prefix}-${agentId}.md`));
       }
     }
 
-    console.log(chalk.green(`\n✓ Created Cline rules in ${clineRulesDir}`));
+    console.log(chalk.green(`\n✓ 已在 ${clineRulesDir} 中创建Cline规则`));
 
     return true;
   }
@@ -785,7 +794,7 @@ class IdeSetup extends BaseIdeSetup {
     const bmadMethodDir = path.join(geminiDir, "bmad-method");
     await fileManager.ensureDirectory(bmadMethodDir);
 
-    // Update logic for existing settings.json
+    // 更新现有settings.json的逻辑
     const settingsPath = path.join(geminiDir, "settings.json");
     if (await fileManager.pathExists(settingsPath)) {
       try {
@@ -793,7 +802,7 @@ class IdeSetup extends BaseIdeSetup {
         const settings = JSON.parse(settingsContent);
         let updated = false;
         
-        // Handle contextFileName property
+        // 处理contextFileName属性
         if (settings.contextFileName && Array.isArray(settings.contextFileName)) {
           const originalLength = settings.contextFileName.length;
           settings.contextFileName = settings.contextFileName.filter(
@@ -809,79 +818,79 @@ class IdeSetup extends BaseIdeSetup {
             settingsPath,
             JSON.stringify(settings, null, 2)
           );
-          console.log(chalk.green("✓ Updated .gemini/settings.json - removed agent file references"));
+          console.log(chalk.green("✓ 已更新.gemini/settings.json - 移除了代理文件引用"));
         }
       } catch (error) {
         console.warn(
-          chalk.yellow("Could not update .gemini/settings.json"),
+          chalk.yellow("无法更新.gemini/settings.json"),
           error
         );
       }
     }
 
-    // Remove old agents directory
+    // 移除旧的agents目录
     const agentsDir = path.join(geminiDir, "agents");
     if (await fileManager.pathExists(agentsDir)) {
       await fileManager.removeDirectory(agentsDir);
-      console.log(chalk.green("✓ Removed old .gemini/agents directory"));
+      console.log(chalk.green("✓ 已移除旧的.gemini/agents目录"));
     }
 
-    // Get all available agents
+    // 获取所有可用代理
     const agents = await this.getAllAgentIds(installDir);
     let concatenatedContent = "";
 
     for (const agentId of agents) {
-      // Find the source agent file
+      // 查找源代理文件
       const agentPath = await this.findAgentPath(agentId, installDir);
 
       if (agentPath) {
         const agentContent = await fileManager.readFile(agentPath);
         
-        // Create properly formatted agent rule content (similar to trae)
-        let agentRuleContent = `# ${agentId.toUpperCase()} Agent Rule\n\n`;
-        agentRuleContent += `This rule is triggered when the user types \`*${agentId}\` and activates the ${await this.getAgentTitle(
+        // 创建格式正确的代理规则内容（类似于Trae）
+        let agentRuleContent = `# ${agentId.toUpperCase()} 代理规则\n\n`;
+        agentRuleContent += `当用户输入 \`*${agentId}\` 并激活 ${await this.getAgentTitle(
           agentId,
           installDir
-        )} agent persona.\n\n`;
-        agentRuleContent += "## Agent Activation\n\n";
+        )} 代理角色时，此规则将被触发。\n\n`;
+        agentRuleContent += "## 代理激活\n\n";
         agentRuleContent +=
-          "CRITICAL: Read the full YAML, start activation to alter your state of being, follow startup section instructions, stay in this being until told to exit this mode:\n\n";
+          "重要提示: 阅读完整的YAML，开始激活以改变您的存在状态，遵循启动部分说明，在此状态下直到被告知退出此模式:\n\n";
         agentRuleContent += "```yaml\n";
-        // Extract just the YAML content from the agent file
+        // 从代理文件中提取YAML内容
         const yamlContent = extractYamlFromAgent(agentContent);
         if (yamlContent) {
           agentRuleContent += yamlContent;
         }
         else {
-          // If no YAML found, include the whole content minus the header
+          // 如果未找到YAML，则包含除头信息外的所有内容
           agentRuleContent += agentContent.replace(/^#.*$/m, "").trim();
         }
         agentRuleContent += "\n```\n\n";
-        agentRuleContent += "## File Reference\n\n";
+        agentRuleContent += "## 文件引用\n\n";
         const relativePath = path.relative(installDir, agentPath).replace(/\\/g, '/');
-        agentRuleContent += `The complete agent definition is available in [${relativePath}](${relativePath}).\n\n`;
-        agentRuleContent += "## Usage\n\n";
-        agentRuleContent += `When the user types \`*${agentId}\`, activate this ${await this.getAgentTitle(
+        agentRuleContent += `完整的代理定义可在 [${relativePath}](${relativePath}) 中找到。\n\n`;
+        agentRuleContent += "## 用法\n\n";
+        agentRuleContent += `当用户输入 \`*${agentId}\` 时，激活此 ${await this.getAgentTitle(
           agentId,
           installDir
-        )} persona and follow all instructions defined in the YAML configuration above.\n`;
+        )} 角色并遵循上述YAML配置中定义的所有说明。\n`;
         
-        // Add to concatenated content with separator
+        // 添加到连接内容中，并用分隔符分隔
         concatenatedContent += agentRuleContent + "\n\n---\n\n";
-        console.log(chalk.green(`✓ Added context for @${agentId}`));
+        console.log(chalk.green(`✓ 已添加 ${agentId} 的上下文`));
       }
     }
 
-    // Write the concatenated content to GEMINI.md
+    // 将连接内容写入GEMINI.md
     const geminiMdPath = path.join(bmadMethodDir, "GEMINI.md");
     await fileManager.writeFile(geminiMdPath, concatenatedContent);
-    console.log(chalk.green(`\n✓ Created GEMINI.md in ${bmadMethodDir}`));
+    console.log(chalk.green(`\n✓ 已在 ${bmadMethodDir} 中创建GEMINI.md`));
 
     return true;
   }
 
   async setupGitHubCopilot(installDir, selectedAgent, spinner = null, preConfiguredSettings = null) {
-    // Configure VS Code workspace settings first to avoid UI conflicts with loading spinners
+    // 首先配置VS Code工作区设置，以避免与加载微调器发生UI冲突
     await this.configureVsCodeSettings(installDir, spinner, preConfiguredSettings);
     
     const chatmodesDir = path.join(installDir, ".github", "chatmodes");
@@ -890,18 +899,18 @@ class IdeSetup extends BaseIdeSetup {
     await fileManager.ensureDirectory(chatmodesDir);
 
     for (const agentId of agents) {
-      // Find the agent file
+      // 查找代理文件
       const agentPath = await this.findAgentPath(agentId, installDir);
       const chatmodePath = path.join(chatmodesDir, `${agentId}.chatmode.md`);
 
       if (agentPath) {
-        // Create chat mode file with agent content
+        // 创建带有代理内容的聊天模式文件
         const agentContent = await fileManager.readFile(agentPath);
         const agentTitle = await this.getAgentTitle(agentId, installDir);
         
-        // Extract whenToUse for the description
+        // 提取whenToUse作为描述
         const yamlMatch = agentContent.match(/```ya?ml\r?\n([\s\S]*?)```/);
-        let description = `Activates the ${agentTitle} agent persona.`;
+        let description = `激活 ${agentTitle} 代理角色。`;
         if (yamlMatch) {
           const whenToUseMatch = yamlMatch[1].match(/whenToUse:\s*"(.*?)"/);
           if (whenToUseMatch && whenToUseMatch[1]) {
@@ -918,12 +927,12 @@ tools: ['changes', 'codebase', 'fetch', 'findTestFiles', 'githubRepo', 'problems
         chatmodeContent += agentContent;
 
         await fileManager.writeFile(chatmodePath, chatmodeContent);
-        console.log(chalk.green(`✓ Created chat mode: ${agentId}.chatmode.md`));
+        console.log(chalk.green(`✓ 已创建聊天模式: ${agentId}.chatmode.md`));
       }
     }
 
-    console.log(chalk.green(`\n✓ Github Copilot setup complete!`));
-    console.log(chalk.dim(`You can now find the BMad agents in the Chat view's mode selector.`));
+    console.log(chalk.green(`\n✓ Github Copilot设置完成!`));
+    console.log(chalk.dim(`您现在可以在聊天视图的模式选择器中找到BMad代理。`));
 
     return true;
   }
@@ -934,47 +943,47 @@ tools: ['changes', 'codebase', 'fetch', 'findTestFiles', 'githubRepo', 'problems
     
     await fileManager.ensureDirectory(vscodeDir);
     
-    // Read existing settings if they exist
+    // 读取现有设置（如果存在）
     let existingSettings = {};
     if (await fileManager.pathExists(settingsPath)) {
       try {
         const existingContent = await fileManager.readFile(settingsPath);
         existingSettings = JSON.parse(existingContent);
-        console.log(chalk.yellow("Found existing .vscode/settings.json. Merging BMad settings..."));
+        console.log(chalk.yellow("找到现有.vscode/settings.json。正在合并BMad设置..."));
       } catch (error) {
-        console.warn(chalk.yellow("Could not parse existing settings.json. Creating new one."));
+        console.warn(chalk.yellow("无法解析现有settings.json。正在创建新文件。"));
         existingSettings = {};
       }
     }
     
-    // Use pre-configured settings if provided, otherwise prompt
+    // 如果提供了预配置设置，则使用；否则提示
     let configChoice;
     if (preConfiguredSettings && preConfiguredSettings.configChoice) {
       configChoice = preConfiguredSettings.configChoice;
-      console.log(chalk.dim(`Using pre-configured GitHub Copilot settings: ${configChoice}`));
+      console.log(chalk.dim(`正在使用预配置的GitHub Copilot设置: ${configChoice}`));
     } else {
-      // Clear any previous output and add spacing to avoid conflicts with loaders
+      // 清除任何先前的输出并添加间距以避免与加载器冲突
       console.log('\n'.repeat(2));
-      console.log(chalk.blue("🔧 Github Copilot Agent Settings Configuration"));
-      console.log(chalk.dim("BMad works best with specific VS Code settings for optimal agent experience."));
-      console.log(''); // Add extra spacing
+      console.log(chalk.blue("🔧 Github Copilot代理设置配置"));
+      console.log(chalk.dim("BMad的最佳工作方式是使用特定的VS Code设置，以获得最佳代理体验。"));
+      console.log(''); // 添加额外间距
       
       const response = await inquirer.prompt([
         {
           type: 'list',
           name: 'configChoice',
-          message: chalk.yellow('How would you like to configure GitHub Copilot settings?'),
+          message: chalk.yellow('您希望如何配置GitHub Copilot设置？'),
           choices: [
             {
-              name: 'Use recommended defaults (fastest setup)',
+              name: '使用推荐的默认值（最快设置）',
               value: 'defaults'
             },
             {
-              name: 'Configure each setting manually (customize to your preferences)',
+              name: '手动配置每个设置（根据您的偏好自定义）',
               value: 'manual'
             },
             {
-              name: 'Skip settings configuration (I\'ll configure manually later)',
+              name: '跳过设置配置（我稍后会手动配置）',
               value: 'skip'
             }
           ],
@@ -987,8 +996,8 @@ tools: ['changes', 'codebase', 'fetch', 'findTestFiles', 'githubRepo', 'problems
     let bmadSettings = {};
     
     if (configChoice === 'skip') {
-      console.log(chalk.yellow("⚠️  Skipping VS Code settings configuration."));
-      console.log(chalk.dim("You can manually configure these settings in .vscode/settings.json:"));
+      console.log(chalk.yellow("⚠️  正在跳过VS Code设置配置。"));
+      console.log(chalk.dim("您可以手动在.vscode/settings.json中配置这些设置:"));
       console.log(chalk.dim("  • chat.agent.enabled: true"));
       console.log(chalk.dim("  • chat.agent.maxRequests: 15"));
       console.log(chalk.dim("  • github.copilot.chat.agent.runTasks: true"));
@@ -999,7 +1008,7 @@ tools: ['changes', 'codebase', 'fetch', 'findTestFiles', 'githubRepo', 'problems
     }
     
     if (configChoice === 'defaults') {
-      // Use recommended defaults
+      // 使用推荐的默认值
       bmadSettings = {
         "chat.agent.enabled": true,
         "chat.agent.maxRequests": 15,
@@ -1008,12 +1017,12 @@ tools: ['changes', 'codebase', 'fetch', 'findTestFiles', 'githubRepo', 'problems
         "github.copilot.chat.agent.autoFix": true,
         "chat.tools.autoApprove": false
       };
-      console.log(chalk.green("✓ Using recommended BMad defaults for Github Copilot settings"));
+      console.log(chalk.green("✓ 正在使用GitHub Copilot设置的推荐BMad默认值"));
     } else {
-      // Manual configuration
-      console.log(chalk.blue("\n📋 Let's configure each setting for your preferences:"));
+      // 手动配置
+      console.log(chalk.blue("\n📋 让我们为您的偏好配置每个设置:"));
       
-      // Pause spinner during manual configuration prompts
+      // 在手动配置提示期间暂停微调器
       let spinnerWasActive = false;
       if (spinner && spinner.isSpinning) {
         spinner.stop();
@@ -1024,12 +1033,12 @@ tools: ['changes', 'codebase', 'fetch', 'findTestFiles', 'githubRepo', 'problems
         {
           type: 'input',
           name: 'maxRequests',
-          message: 'Maximum requests per agent session (recommended: 15)?',
+          message: '每个代理会话的最大请求数（推荐: 15）？',
           default: '15',
           validate: (input) => {
             const num = parseInt(input);
             if (isNaN(num) || num < 1 || num > 50) {
-              return 'Please enter a number between 1 and 50';
+              return '请输入1到50之间的数字';
             }
             return true;
           }
@@ -1037,36 +1046,36 @@ tools: ['changes', 'codebase', 'fetch', 'findTestFiles', 'githubRepo', 'problems
         {
           type: 'confirm',
           name: 'runTasks',
-          message: 'Allow agents to run workspace tasks (package.json scripts, etc.)?',
+          message: '允许代理运行工作区任务（package.json脚本等）？',
           default: true
         },
         {
           type: 'confirm',
           name: 'mcpDiscovery',
-          message: 'Enable MCP (Model Context Protocol) server discovery?',
+          message: '启用MCP（模型上下文协议）服务器发现？',
           default: true
         },
         {
           type: 'confirm',
           name: 'autoFix',
-          message: 'Enable automatic error detection and fixing in generated code?',
+          message: '在生成的代码中启用自动错误检测和修复？',
           default: true
         },
         {
           type: 'confirm',
           name: 'autoApprove',
-          message: 'Auto-approve ALL tools without confirmation? (⚠️  EXPERIMENTAL - less secure)',
+          message: '未经确认自动批准所有工具？（⚠️ 实验性 - 安全性较低）',
           default: false
         }
       ]);
 
-      // Restart spinner if it was active before prompts
+      // 如果微调器在提示之前处于活动状态，则重新启动
       if (spinner && spinnerWasActive) {
         spinner.start();
       }
       
       bmadSettings = {
-        "chat.agent.enabled": true, // Always enabled - required for BMad agents
+        "chat.agent.enabled": true, // 始终启用 - BMad代理必需
         "chat.agent.maxRequests": parseInt(manualSettings.maxRequests),
         "github.copilot.chat.agent.runTasks": manualSettings.runTasks,
         "chat.mcp.discovery.enabled": manualSettings.mcpDiscovery,
@@ -1074,22 +1083,22 @@ tools: ['changes', 'codebase', 'fetch', 'findTestFiles', 'githubRepo', 'problems
         "chat.tools.autoApprove": manualSettings.autoApprove
       };
       
-      console.log(chalk.green("✓ Custom settings configured"));
+      console.log(chalk.green("✓ 自定义设置已配置"));
     }
     
-    // Merge settings (existing settings take precedence to avoid overriding user preferences)
+    // 合并设置（现有设置优先，以避免覆盖用户偏好）
     const mergedSettings = { ...bmadSettings, ...existingSettings };
     
-    // Write the updated settings
+    // 写入更新后的设置
     await fileManager.writeFile(settingsPath, JSON.stringify(mergedSettings, null, 2));
     
-    console.log(chalk.green("✓ VS Code workspace settings configured successfully"));
-    console.log(chalk.dim("  Settings written to .vscode/settings.json:"));
+    console.log(chalk.green("✓ VS Code工作区设置配置成功"));
+    console.log(chalk.dim("  设置已写入.vscode/settings.json:"));
     Object.entries(bmadSettings).forEach(([key, value]) => {
       console.log(chalk.dim(`  • ${key}: ${value}`));
     });
     console.log(chalk.dim(""));
-    console.log(chalk.dim("You can modify these settings anytime in .vscode/settings.json"));
+    console.log(chalk.dim("您可以随时在.vscode/settings.json中修改这些设置"));
   }
 }
 

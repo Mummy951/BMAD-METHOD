@@ -1,6 +1,11 @@
 /**
- * Base IDE Setup - Common functionality for all IDE setups
- * Reduces duplication and provides shared methods
+ * IDE基础设置 - 所有IDE设置的通用功能
+ * 减少重复代码并提供共享方法。
+ *
+ * 此模块负责处理与IDE集成相关的通用逻辑，
+ * 包括代理ID的获取、代理路径的查找、代理标题的提取，
+ * 以及处理扩展包的安装和代理规则内容的创建。
+ * 它还提供了缓存机制来优化性能。
  */
 
 const path = require("path");
@@ -18,7 +23,7 @@ class BaseIdeSetup {
   }
 
   /**
-   * Get all agent IDs with caching
+   * 获取所有代理ID（带缓存）
    */
   async getAllAgentIds(installDir) {
     const cacheKey = `all-agents:${installDir}`;
@@ -28,11 +33,11 @@ class BaseIdeSetup {
 
     const allAgents = new Set();
     
-    // Get core agents
+    // 获取核心代理
     const coreAgents = await this.getCoreAgentIds(installDir);
     coreAgents.forEach(id => allAgents.add(id));
     
-    // Get expansion pack agents
+    // 获取扩展包代理
     const expansionPacks = await this.getInstalledExpansionPacks(installDir);
     for (const pack of expansionPacks) {
       const packAgents = await this.getExpansionPackAgents(pack.path);
@@ -45,7 +50,7 @@ class BaseIdeSetup {
   }
 
   /**
-   * Get core agent IDs
+   * 获取核心代理ID
    */
   async getCoreAgentIds(installDir) {
     const coreAgents = [];
@@ -58,7 +63,7 @@ class BaseIdeSetup {
       if (await fileManager.pathExists(agentsDir)) {
         const files = await resourceLocator.findFiles("*.md", { cwd: agentsDir });
         coreAgents.push(...files.map(file => path.basename(file, ".md")));
-        break; // Use first found
+        break; // 使用第一个找到的
       }
     }
 
@@ -66,7 +71,7 @@ class BaseIdeSetup {
   }
 
   /**
-   * Find agent path with caching
+   * 查找代理路径（带缓存）
    */
   async findAgentPath(agentId, installDir) {
     const cacheKey = `agent-path:${agentId}:${installDir}`;
@@ -74,11 +79,11 @@ class BaseIdeSetup {
       return this._pathCache.get(cacheKey);
     }
 
-    // Use resource locator for efficient path finding
+    // 使用资源定位器高效查找路径
     let agentPath = await resourceLocator.getAgentPath(agentId);
     
     if (!agentPath) {
-      // Check installation-specific paths
+      // 检查特定安装路径
       const possiblePaths = [
         path.join(installDir, ".bmad-core", "agents", `${agentId}.md`),
         path.join(installDir, "bmad-core", "agents", `${agentId}.md`),
@@ -100,7 +105,7 @@ class BaseIdeSetup {
   }
 
   /**
-   * Get agent title from metadata
+   * 从元数据中获取代理标题
    */
   async getAgentTitle(agentId, installDir) {
     const agentPath = await this.findAgentPath(agentId, installDir);
@@ -114,13 +119,13 @@ class BaseIdeSetup {
         return metadata.agent_name || agentId;
       }
     } catch (error) {
-      // Fallback to agent ID
+      // 出现错误时回退到代理ID
     }
     return agentId;
   }
 
   /**
-   * Get installed expansion packs
+   * 获取已安装的扩展包
    */
   async getInstalledExpansionPacks(installDir) {
     const cacheKey = `expansion-packs:${installDir}`;
@@ -130,13 +135,13 @@ class BaseIdeSetup {
 
     const expansionPacks = [];
     
-    // Check for dot-prefixed expansion packs
+    // 检查带点前缀的扩展包
     const dotExpansions = await resourceLocator.findFiles(".bmad-*", { cwd: installDir });
     
     for (const dotExpansion of dotExpansions) {
       if (dotExpansion !== ".bmad-core") {
         const packPath = path.join(installDir, dotExpansion);
-        const packName = dotExpansion.substring(1); // remove the dot
+        const packName = dotExpansion.substring(1); // 移除点
         expansionPacks.push({
           name: packName,
           path: packPath
@@ -144,7 +149,7 @@ class BaseIdeSetup {
       }
     }
     
-    // Check other dot folders that have config.yaml
+    // 检查其他带有config.yaml的带点文件夹
     const allDotFolders = await resourceLocator.findFiles(".*", { cwd: installDir });
     for (const folder of allDotFolders) {
       if (!folder.startsWith(".bmad-") && folder !== ".bmad-core") {
@@ -152,7 +157,7 @@ class BaseIdeSetup {
         const configPath = path.join(packPath, "config.yaml");
         if (await fileManager.pathExists(configPath)) {
           expansionPacks.push({
-            name: folder.substring(1), // remove the dot
+            name: folder.substring(1), // 移除点
             path: packPath
           });
         }
@@ -164,7 +169,7 @@ class BaseIdeSetup {
   }
 
   /**
-   * Get expansion pack agents
+   * 获取扩展包代理
    */
   async getExpansionPackAgents(packPath) {
     const agentsDir = path.join(packPath, "agents");
@@ -177,7 +182,7 @@ class BaseIdeSetup {
   }
 
   /**
-   * Create agent rule content (shared logic)
+   * 创建代理规则内容 (共享逻辑)
    */
   async createAgentRuleContent(agentId, agentPath, installDir, format = 'mdc') {
     const agentContent = await fileManager.readFile(agentPath);
@@ -187,28 +192,28 @@ class BaseIdeSetup {
     let content = "";
     
     if (format === 'mdc') {
-      // MDC format for Cursor
+      // Cursor的MDC格式
       content = "---\n";
       content += "description: \n";
       content += "globs: []\n";
       content += "alwaysApply: false\n";
       content += "---\n\n";
-      content += `# ${agentId.toUpperCase()} Agent Rule\n\n`;
-      content += `This rule is triggered when the user types \`@${agentId}\` and activates the ${agentTitle} agent persona.\n\n`;
-      content += "## Agent Activation\n\n";
-      content += "CRITICAL: Read the full YAML, start activation to alter your state of being, follow startup section instructions, stay in this being until told to exit this mode:\n\n";
+      content += `# ${agentId.toUpperCase()} 代理规则\n\n`;
+      content += `当用户输入 \`@${agentId}\` 时，此规则将被触发，并激活 ${agentTitle} 代理角色。\n\n`;
+      content += "## 代理激活\n\n";
+      content += "重要提示: 阅读完整的YAML，开始激活以改变您的存在状态，遵循启动部分说明，在此状态下直到被告知退出此模式:\n\n";
       content += "```yaml\n";
       content += yamlContent || agentContent.replace(/^#.*$/m, "").trim();
       content += "\n```\n\n";
-      content += "## File Reference\n\n";
+      content += "## 文件引用\n\n";
       const relativePath = path.relative(installDir, agentPath).replace(/\\/g, '/');
-      content += `The complete agent definition is available in [${relativePath}](mdc:${relativePath}).\n\n`;
-      content += "## Usage\n\n";
-      content += `When the user types \`@${agentId}\`, activate this ${agentTitle} persona and follow all instructions defined in the YAML configuration above.\n`;
+      content += `完整的代理定义可在 [${relativePath}](mdc:${relativePath}) 中找到。\n\n`;
+      content += "## 用法\n\n";
+      content += `当用户输入 \`@${agentId}\` 时，激活此 ${agentTitle} 角色并遵循上述YAML配置中定义的所有说明。\n`;
     } else if (format === 'claude') {
-      // Claude Code format
-      content = `# /${agentId} Command\n\n`;
-      content += `When this command is used, adopt the following agent persona:\n\n`;
+      // Claude Code格式
+      content = `# /${agentId} 命令\n\n`;
+      content += `使用此命令时，采用以下代理角色:\n\n`;
       content += agentContent;
     }
     
@@ -216,7 +221,7 @@ class BaseIdeSetup {
   }
 
   /**
-   * Clear all caches
+   * 清除所有缓存
    */
   clearCache() {
     this._agentCache.clear();

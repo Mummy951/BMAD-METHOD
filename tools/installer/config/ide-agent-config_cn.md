@@ -1,0 +1,58 @@
+# IDE专属代理配置
+# 此文件定义了不同IDE的代理特定设置
+
+# Roo Code文件权限
+# 每个代理都可以根据正则表达式模式限制文件访问
+# 如果代理未在此处列出，则其具有完全编辑权限
+roo-permissions:
+  # 核心代理
+  analyst:
+    fileRegex: "\\.(md|txt)$"
+    description: "文档和文本文件"
+  pm:
+    fileRegex: "\\.(md|txt)$"
+    description: "产品文档"
+  architect:
+    fileRegex: "\\.(md|txt|yml|yaml|json)$"
+    description: "架构文档和配置"
+  qa:
+    fileRegex: "\\.(test|spec)\\.(js|ts|jsx|tsx)$|\\.md$"
+    description: "测试文件和文档"
+  ux-expert:
+    fileRegex: "\\.(md|css|scss|html|jsx|tsx)$"
+    description: "与设计相关的文件"
+  po:
+    fileRegex: "\\.(md|txt)$"
+    description: "故事和需求文档"
+  sm:
+    fileRegex: "\\.(md|txt)$"
+    description: "流程和计划文档"
+  # 扩展包代理
+  game-designer:
+    fileRegex: "\\.(md|txt|json|yaml|yml)$"
+    description: "游戏设计文档和配置"
+  game-sm:
+    fileRegex: "\\.(md|txt)$"
+    description: "游戏项目管理文档"
+
+# Cline代理排序
+# 数字越小越靠前
+# 未列出的代理排序为99
+cline-order:
+  # 核心代理
+  bmad-master: 1
+  bmad-orchestrator: 2
+  pm: 3
+  analyst: 4
+  architect: 5
+  po: 6
+  sm: 7
+  dev: 8
+  qa: 9
+  ux-expert: 10
+  # 扩展包代理
+  bmad-the-creator: 11
+  game-designer: 12
+  game-developer: 13
+  game-sm: 14
+  infra-devops-platform: 15
